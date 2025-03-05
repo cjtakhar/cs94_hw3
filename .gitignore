@@ -1,0 +1,19 @@
+# Ignore build output and compiled binaries
+bin/
+obj/
+publish/
+*.dll
+*.exe
+*.pdb
+*.log
+
+# Ignore user-specific settings
+.vscode/
+*.suo
+*.user
+*.db
+*.DS_Store
+
+# Ignore secrets files
+**/secrets.json
+**/appsettings.Development.json
