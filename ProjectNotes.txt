@@ -1,0 +1,12 @@
+Hw3NoteKeeperSolution - Assignment #3 
+Kuljit Takhar
+kut819@g.harvard.edu
+AI attribution
+Notes to install
+AI Foundry Hub and Project name
+Azure SQL Server
+Azure SQL Database
+URL to the Azure SQL Server with the Database name included
+The name of your Azure Storage account
+URL to Azure App Service Website.
+Uri Azure OpenAI Service
