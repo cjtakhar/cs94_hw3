@@ -23,13 +23,10 @@ namespace NoteKeeper.Controllers
         {
             _logger = logger;
 
-            // Fetch storage connection string from environment variables first, then fallback to appsettings.json
-            string connectionString = Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECTION_STRING")
-                                      ?? configuration["Storage:ConnectionString"]
+            string connectionString = configuration.GetSection("Storage")["ConnectionString"]
                                       ?? throw new InvalidOperationException("Azure Storage connection string is not configured.");
 
-            _maxAttachments = int.Parse(Environment.GetEnvironmentVariable("MAX_ATTACHMENTS")
-                                      ?? configuration["Storage:MaxAttachments"] ?? "3");
+            _maxAttachments = int.Parse(configuration["Storage:MaxAttachments"] ?? "3");
 
             _blobServiceClient = new BlobServiceClient(connectionString);
         }
@@ -43,20 +40,15 @@ namespace NoteKeeper.Controllers
 
             try
             {
-                // Step 1: Get the container reference (noteId as container name)
                 var containerClient = _blobServiceClient.GetBlobContainerClient(noteId);
-
-                // Step 2: Ensure the container exists and is private
                 await containerClient.CreateIfNotExistsAsync(PublicAccessType.None);
 
-                // Step 3: Check if the note (container) actually exists, return 404 if not
                 if (!await containerClient.ExistsAsync())
                 {
                     _logger.LogWarning($"Note {noteId} not found. Cannot upload attachment {attachmentId}.");
                     return NotFound($"Note {noteId} does not exist.");
                 }
 
-                // Step 4: Enforce max attachments limit
                 var blobs = containerClient.GetBlobsAsync();
                 int count = 0;
                 await foreach (var blob in blobs)
@@ -72,35 +64,23 @@ namespace NoteKeeper.Controllers
                     );
                 }
 
-                // Step 5: Get blob reference
                 var blobClient = containerClient.GetBlobClient(attachmentId);
+                var metadata = new Dictionary<string, string> { { "NoteId", noteId } };
 
-                // Step 6: Set metadata
-                var metadata = new Dictionary<string, string>
-                {
-                    { "NoteId", noteId }
-                };
-
-                // Step 7: Check if the blob exists
                 bool blobExists = await blobClient.ExistsAsync();
 
-                // Step 8: Upload file stream
                 using (var stream = fileData.OpenReadStream())
                 {
                     await blobClient.UploadAsync(stream, new BlobUploadOptions
                     {
-                        HttpHeaders = new BlobHttpHeaders
-                        {
-                            ContentType = fileData.ContentType
-                        },
+                        HttpHeaders = new BlobHttpHeaders { ContentType = fileData.ContentType },
                         Metadata = metadata
                     }, cancellationToken: default);
                 }
 
-                // Step 9: Return appropriate response
                 if (blobExists)
                 {
-                    return NoContent();  // ✅ (File updated) → 204 No Content
+                    return NoContent();
                 }
 
                 return Created(blobClient.Uri.ToString(), new { Message = "Attachment created successfully.", AttachmentUrl = blobClient.Uri.ToString() });
@@ -118,20 +98,15 @@ namespace NoteKeeper.Controllers
         {
             try
             {
-                // Step 1: Get container reference (noteId as container name)
                 var containerClient = _blobServiceClient.GetBlobContainerClient(noteId);
 
-                // Step 2: Ensure the note exists
                 if (!await containerClient.ExistsAsync())
                 {
                     _logger.LogWarning($"Note {noteId} not found. Cannot delete attachment {attachmentId}.");
                     return NotFound($"Note {noteId} does not exist.");
                 }
 
-                // Step 3: Get blob reference
                 var blobClient = containerClient.GetBlobClient(attachmentId);
-
-                // Step 4: Attempt to delete the attachment
                 bool deleted = await blobClient.DeleteIfExistsAsync();
 
                 if (deleted)
@@ -142,12 +117,47 @@ namespace NoteKeeper.Controllers
                 else
                 {
                     _logger.LogWarning($"Attachment {attachmentId} was not found for note {noteId}.");
-                    return NoContent();  // ✅ Still return 204 if file doesn't exist (per assignment)
+                    return NoContent();
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError($"Error deleting attachment {attachmentId} from note {noteId}: {ex.Message}");
+                return StatusCode(500, "Internal Server Error");
+            }
+        }
+
+        // 🔹 GET (Retrieve an Attachment)
+        [HttpGet("{attachmentId}")]
+        public async Task<IActionResult> GetAttachment(string noteId, string attachmentId)
+        {
+            try
+            {
+                var containerClient = _blobServiceClient.GetBlobContainerClient(noteId);
+
+                if (!await containerClient.ExistsAsync())
+                {
+                    _logger.LogWarning($"Note {noteId} not found. Cannot retrieve attachment {attachmentId}.");
+                    return NotFound($"Note {noteId} does not exist.");
+                }
+
+                var blobClient = containerClient.GetBlobClient(attachmentId);
+
+                if (!await blobClient.ExistsAsync())
+                {
+                    _logger.LogWarning($"Attachment {attachmentId} not found in note {noteId}.");
+                    return NotFound($"Attachment {attachmentId} does not exist.");
+                }
+
+                var downloadResponse = await blobClient.DownloadStreamingAsync();
+                var stream = downloadResponse.Value.Content;
+                string contentType = downloadResponse.Value.Details.ContentType ?? "application/octet-stream";
+
+                return File(stream, contentType, attachmentId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error retrieving attachment {attachmentId} from note {noteId}: {ex.Message}");
                 return StatusCode(500, "Internal Server Error");
             }
         }
