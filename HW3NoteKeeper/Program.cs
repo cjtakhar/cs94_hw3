@@ -15,6 +15,7 @@ using Microsoft.ApplicationInsights.AspNetCore.Extensions;
 // Project-Specific Namespaces
 using NoteKeeper.Settings;
 using NoteKeeper.Data;
+using NoteKeeper.Services;
 
 // Configure the application
 var builder = WebApplication.CreateBuilder(args);
@@ -66,6 +67,8 @@ builder.Services.AddSwaggerGen(c =>
     c.IncludeXmlComments(xmlPath);
 });
 
+builder.Services.AddSingleton<BlobStorageService>();
+
 // Configure NoteSettings
 builder.Services.Configure<NoteSettings>(builder.Configuration.GetSection("NoteSettings"));
 builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<NoteSettings>>().Value);
@@ -115,6 +118,7 @@ app.UseSwaggerUI(c =>
 await StartupHelper.ApplyMigrationsAndSeedDatabase(app.Services);
 
 // Configure middleware
+app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
 app.UseCors("AllowReactApp");
