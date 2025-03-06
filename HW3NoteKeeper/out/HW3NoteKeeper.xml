@@ -1,0 +1,136 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>HW3NoteKeeper</name>
+    </assembly>
+    <members>
+        <member name="T:NoteKeeper.Controllers.NotesController">
+            <summary>
+            API Controller for managing notes.
+            </summary>
+        </member>
+        <member name="M:NoteKeeper.Controllers.NotesController.GetNotes(System.String)">
+            <summary>
+            Retrieves all notes from database and searches by tag
+            </summary>
+        </member>
+        <member name="M:NoteKeeper.Controllers.NotesController.GetNoteById(System.Guid)">
+            <summary>
+            Retrieves a note by its ID
+            </summary>
+        </member>
+        <member name="M:NoteKeeper.Controllers.NotesController.GetAllTags">
+            <summary>
+            Retrieves a unique list of all tags
+            </summary>
+        </member>
+        <member name="M:NoteKeeper.Controllers.NotesController.CreateNote(NoteKeeper.Models.Note)">
+            <summary>
+            Creates a new note and saves it to the database.
+            </summary>
+        </member>
+        <member name="M:NoteKeeper.Controllers.NotesController.UpdateNote(System.Guid,NoteUpdateRequest)">
+            <summary>
+            Updates an existing note by its ID
+            </summary>
+        </member>
+        <member name="M:NoteKeeper.Controllers.NotesController.DeleteNote(System.Guid)">
+            <summary>
+            Deletes a note by its ID
+            </summary>
+        </member>
+        <member name="M:NoteKeeper.Controllers.NotesController.GenerateTagsAsync(System.String)">
+            <summary>
+            Calls OpenAI API to generate AI-powered tags for a note's details.
+            </summary>
+        </member>
+        <member name="T:NoteKeeper.Data.AppDbContext">
+            <summary>
+            Represents the database context for the NoteKeeper application.
+            This class is responsible for managing database interactions 
+            using Entity Framework Core.
+            </summary>
+        </member>
+        <member name="M:NoteKeeper.Data.AppDbContext.#ctor(Microsoft.EntityFrameworkCore.DbContextOptions{NoteKeeper.Data.AppDbContext},Microsoft.Extensions.Configuration.IConfiguration)">
+            <summary>
+            Initializes a new instance of the <see cref="T:NoteKeeper.Data.AppDbContext"/> class.
+            </summary>
+            <param name="options">The database context options.</param>
+            <param name="configuration">The application configuration service for retrieving settings.</param>
+        </member>
+        <member name="P:NoteKeeper.Data.AppDbContext.Notes">
+            <summary>
+            Gets or sets the collection of notes stored in the database.
+            Represents the "Note" table.
+            </summary>
+        </member>
+        <member name="P:NoteKeeper.Data.AppDbContext.Tags">
+            <summary>
+            Gets or sets the collection of tags stored in the database.
+            Represents the "Tag" table.
+            </summary>
+        </member>
+        <member name="P:NoteKeeper.Data.AppDbContext.MaxNotes">
+            <summary>
+            Gets the maximum number of notes allowed in the application.
+            This value is configurable via application settings.
+            </summary>
+        </member>
+        <member name="M:NoteKeeper.Data.AppDbContext.OnModelCreating(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <summary>
+            Configures the database model and entity relationships using Fluent API.
+            This method is called when the database model is being created.
+            </summary>
+            <param name="modelBuilder">The model builder used to configure database schema and relationships.</param>
+        </member>
+        <member name="T:NoteKeeper.Models.Note">
+            <summary>
+            Represents a note entity stored in the database.
+            </summary>
+        </member>
+        <member name="T:NoteKeeper.Models.Tag">
+            <summary>
+            Represents a tag entity stored in the database.
+            </summary>
+        </member>
+        <member name="T:NoteKeeper.Settings.AISettings">
+            <summary>
+            Contains configuration settings for AI-related operations
+            </summary>
+        </member>
+        <member name="T:NoteKeeper.Settings.NoteSettings">
+            <summary>
+            Gets or sets the maximum number of notes that can be stored in the database.
+            </summary>
+        </member>
+        <member name="T:DbInitializer">
+            <summary>
+            Provides functionality to seed the database with default notes and AI-generated tags.
+            </summary>
+        </member>
+        <member name="M:DbInitializer.Seed(NoteKeeper.Data.AppDbContext,System.Func{System.String,System.Threading.Tasks.Task{System.Collections.Generic.List{System.String}}})">
+            <summary>
+            Seeds the database with predefined notes and generates AI-powered tags for each note.
+            Ensures that duplicate entries are not added.
+            </summary>
+            <param name="context">The database context to interact with the database.</param>
+            <param name="generateTagsAsync">A function to generate AI-powered tags based on note details.</param>
+        </member>
+        <member name="T:NoteUpdateRequest">
+            <summary>
+            Updates existing note in database
+            </summary>
+        </member>
+        <member name="T:StartupHelper">
+            <summary>
+            Helper class for applying database migrations and seeding data at application startup.
+            </summary>
+        </member>
+        <member name="M:StartupHelper.ApplyMigrationsAndSeedDatabase(System.IServiceProvider)">
+            <summary>
+            Applies database migrations and seeds default data.
+            </summary>
+            <param name="services">The application's service provider.</param>
+        </member>
+    </members>
+</doc>
