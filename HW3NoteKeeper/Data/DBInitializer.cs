@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using NoteKeeper.Data;
 using NoteKeeper.Models;
+using NoteKeeper.Settings;
 using System;
 using System.Collections.Generic;
 using System.Linq;

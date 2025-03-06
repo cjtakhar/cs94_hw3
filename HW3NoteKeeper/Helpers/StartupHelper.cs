@@ -1,11 +1,9 @@
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using NoteKeeper.Data;
 using NoteKeeper.Settings;
+using System.Text.Json;
+using System.Text;
+using System.Net.Http.Headers;
+using Microsoft.EntityFrameworkCore;
 
 namespace NoteKeeper.Helpers
 {
@@ -22,16 +20,14 @@ namespace NoteKeeper.Helpers
         {
             using var scope = services.CreateScope();
             var serviceProvider = scope.ServiceProvider;
-            
-            var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
 
             try
             {
+                Console.WriteLine("Applying migrations and seeding the database...");
+
                 // Get the database context and apply any pending migrations
                 var dbContext = serviceProvider.GetRequiredService<AppDbContext>();
                 await dbContext.Database.MigrateAsync();
-
-                logger.LogInformation("Database migrations applied successfully.");
 
                 // Retrieve AI settings and HttpClientFactory for tag generation
                 var aiSettings = serviceProvider.GetRequiredService<AISettings>();
@@ -44,7 +40,7 @@ namespace NoteKeeper.Helpers
 
                     var requestBody = new
                     {
-                        model = "gpt-4o-mini",
+                        model = aiSettings.DeploymentModelName ?? "gpt-4o-mini",
                         messages = new[]
                         {
                             new { role = "system", content = "Generate 3-5 relevant one-word tags for the given note details. Always return a valid JSON array." },
@@ -63,53 +59,60 @@ namespace NoteKeeper.Helpers
 
                     if (!response.IsSuccessStatusCode)
                     {
-                        logger.LogError("Failed to fetch tags from OpenAI API. Status Code: {StatusCode}", response.StatusCode);
+                        Console.WriteLine("OpenAI API request failed.");
                         return new List<string> { "ErrorFetchingTags" };
                     }
 
                     var responseContent = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"Received response: {responseContent}");
+
                     try
                     {
                         var jsonResponse = JsonDocument.Parse(responseContent);
-                        
-                        // Ensure "choices" property exists
-                        if (!jsonResponse.RootElement.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
-                        {
-                            logger.LogWarning("Unexpected OpenAI API response format.");
-                            return new List<string> { "InvalidTagsFormat" };
-                        }
-
-                        var messageContent = choices[0]
+                        var messageContent = jsonResponse.RootElement
+                            .GetProperty("choices")[0]
                             .GetProperty("message")
                             .GetProperty("content")
                             .GetString();
 
                         if (!string.IsNullOrEmpty(messageContent))
                         {
-                            // Clean up the response and ensure it's a valid JSON array
-                            messageContent = messageContent.Replace("``````", "").Trim();
+                            // Clean up the response by removing the code block syntax (```json) and whitespace
+                            messageContent = messageContent
+                                .Replace("```json", "")  // Remove the start of the code block
+                                .Replace("```", "")      // Remove the end of the code block
+                                .Trim();                 // Trim any extra spaces
+
                             if (messageContent.StartsWith("[") && messageContent.EndsWith("]"))
                             {
-                                return JsonSerializer.Deserialize<List<string>>(messageContent) ?? new List<string> { "NoTagsGenerated" };
+                                // Deserialize the cleaned-up response into a list of tags
+                                var tags = JsonSerializer.Deserialize<List<string>>(messageContent);
+
+                                if (tags == null || tags.Count == 0)
+                                {
+                                    return new List<string> { "NoTagsGenerated" };
+                                }
+
+                                // Return the successfully parsed tags
+                                return tags;
                             }
                         }
 
                         return new List<string> { "InvalidTagsFormat" };
                     }
-                    catch (Exception parseEx)
+                    catch (Exception ex)
                     {
-                        logger.LogError(parseEx, "Error parsing OpenAI API response.");
+                        Console.WriteLine($"Error parsing OpenAI response: {ex.Message}");
                         return new List<string> { "ErrorParsingTags" };
                     }
                 };
 
-                // Seed the database with initial data
+                // Seed the database with initial data and pass AISettings to DbInitializer
                 await DbInitializer.Seed(dbContext, generateTagsAsync);
-                logger.LogInformation("Database seeding completed successfully.");
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "An error occurred while applying migrations or seeding the database.");
+                Console.WriteLine($"An error occurred during migration or seeding: {ex.Message}");
             }
         }
     }
