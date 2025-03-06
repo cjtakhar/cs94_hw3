@@ -17,6 +17,7 @@ using Azure.Storage.Blobs;
 using NoteKeeper.Settings;
 using NoteKeeper.Data;
 using NoteKeeper.Services;
+using NoteKeeper.Helpers;
 
 // Configure the application
 var builder = WebApplication.CreateBuilder(args);
@@ -128,98 +129,3 @@ app.UseCors("AllowReactApp");
 
 // Run the application
 app.Run();
-
-/// <summary>
-/// Helper class for applying database migrations and seeding data at application startup.
-/// </summary>
-public static class StartupHelper
-{
-    /// <summary>
-    /// Applies database migrations and seeds default data.
-    /// </summary>
-    /// <param name="services">The application's service provider.</param>
-    public static async Task ApplyMigrationsAndSeedDatabase(IServiceProvider services)
-    {
-        using var scope = services.CreateScope();
-        var serviceProvider = scope.ServiceProvider;
-        
-        try
-        {
-            // Get the database context and apply any pending migrations
-            var dbContext = serviceProvider.GetRequiredService<AppDbContext>();
-            await dbContext.Database.MigrateAsync();
-
-            // Retrieve AI settings and HttpClientFactory for tag generation
-            var aiSettings = serviceProvider.GetRequiredService<AISettings>();
-            var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
-
-            // Define a function to generate tags using OpenAI API
-            Func<string, Task<List<string>>> generateTagsAsync = async (details) =>
-            {
-                using var httpClient = httpClientFactory.CreateClient("OpenAI");
-
-                // Prepare the request body for the OpenAI API
-                var requestBody = new
-                {
-                    model = "gpt-4o-mini",
-                    messages = new[]
-                    {
-                        new { role = "system", content = "Generate 3-5 relevant one-word tags for the given note details. Always return a valid JSON array." },
-                        new { role = "user", content = details }
-                    },
-                    temperature = 0.5,
-                    max_tokens = 50
-                };
-
-                var json = JsonSerializer.Serialize(requestBody);
-                var content = new StringContent(json, Encoding.UTF8);
-                content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-
-                // Send the request to the OpenAI API
-                httpClient.DefaultRequestHeaders.Add("api-key", aiSettings.ApiKey);
-                var response = await httpClient.PostAsync(aiSettings.Endpoint, content);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    return new List<string> { "ErrorFetchingTags" };
-                }
-
-                // Process the API response
-                var responseContent = await response.Content.ReadAsStringAsync();
-                try
-                {
-                    var jsonResponse = JsonDocument.Parse(responseContent);
-                    var messageContent = jsonResponse.RootElement
-                        .GetProperty("choices")[0]
-                        .GetProperty("message")
-                        .GetProperty("content")
-                        .GetString();
-
-                    if (!string.IsNullOrEmpty(messageContent))
-                    {
-                        // Clean up the response and ensure it's a valid JSON array
-                        messageContent = messageContent.Replace("``````", "").Trim();
-                        if (messageContent.StartsWith("[") && messageContent.EndsWith("]"))
-                        {
-                            return JsonSerializer.Deserialize<List<string>>(messageContent) ?? new List<string> { "NoTagsGenerated" };
-                        }
-                    }
-                    return new List<string> { "InvalidTagsFormat" };
-                }
-                catch
-                {
-                    return new List<string> { "ErrorParsingTags" };
-                }
-            };
-
-            // Seed the database with initial data
-            await DbInitializer.Seed(dbContext, generateTagsAsync);
-        }
-        catch (Exception ex)
-        {
-            // Log any errors that occur during migration or seeding
-            var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
-            logger.LogError(ex, "An error occurred while applying migrations or seeding the database.");
-        }
-    }
-}
