@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.ApplicationInsights.AspNetCore.Extensions;
+using Azure.Storage.Blobs;
 
 // Project-Specific Namespaces
 using NoteKeeper.Settings;
@@ -83,6 +84,8 @@ if (!string.IsNullOrEmpty(aiConnectionString))
         options.ConnectionString = aiConnectionString;
     });
 }
+
+builder.Services.AddSingleton(new BlobServiceClient(builder.Configuration["Storage:ConnectionString"]));
 
 
 builder.Services.AddSingleton<TelemetryClient>();
