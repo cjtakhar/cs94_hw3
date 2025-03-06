@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.DataContracts;
+using Azure.Storage.Blobs;
 
 // Project-Specific Namespaces
 using NoteKeeper.Data;
@@ -32,6 +33,8 @@ namespace NoteKeeper.Controllers
         private readonly ILogger<NotesController> _logger;
         private readonly NoteSettings _noteSettings;
         private readonly TelemetryClient _telemetryClient;
+        private readonly BlobServiceClient _blobServiceClient;
+
 
 
         public NotesController(
@@ -40,7 +43,8 @@ namespace NoteKeeper.Controllers
             IOptions<AISettings> aiSettings, 
             IOptions<NoteSettings> noteSettings, 
             ILogger<NotesController> logger,
-            TelemetryClient telemetryClient
+            TelemetryClient telemetryClient,
+            BlobServiceClient blobServiceClient
         )
             
             
@@ -51,6 +55,8 @@ namespace NoteKeeper.Controllers
             _aiSettings = aiSettings?.Value ?? throw new ArgumentNullException(nameof(aiSettings), "AISettings is null. Ensure it is registered in Program.cs.");
             _noteSettings = noteSettings?.Value ?? throw new ArgumentNullException(nameof(noteSettings), "NoteSettings is null. Ensure it is registered in Program.cs.");
             _telemetryClient = telemetryClient ?? throw new ArgumentNullException(nameof(telemetryClient));
+            _blobServiceClient = blobServiceClient;  // Assign the injected BlobServiceClient
+
         }
 
 
@@ -293,21 +299,65 @@ public async Task<IActionResult> UpdateNote(Guid noteId, [FromBody] NoteUpdateRe
 }
 
 
-        /// <summary>
-        /// Deletes a note by its ID
+    /// <summary>
+        /// Deletes a note and its associated attachments.
         /// </summary>
         [HttpDelete("{noteId}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)] // Successfully deleted
         [ProducesResponseType(StatusCodes.Status404NotFound)] // Note not found
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)] // Server error
         public async Task<IActionResult> DeleteNote(Guid noteId)
-
         {
             var note = await _context.Notes.Include(n => n.Tags).FirstOrDefaultAsync(n => n.NoteId == noteId);
-            if (note == null) return NotFound();
+            if (note == null)
+            {
+                _logger.LogWarning($"Note {noteId} not found. Cannot delete.");
+                return NotFound($"Note {noteId} does not exist.");
+            }
 
+            // 🔹 Step 1: Delete associated tags
+            try
+            {
+                _context.Tags.RemoveRange(note.Tags);
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Failed to delete tags for note {noteId}: {ex.Message}");
+                return StatusCode(500, "Failed to delete tags. Note deletion aborted.");
+            }
+
+            // 🔹 Step 2: Delete all attachments from blob storage
+            var containerClient = _blobServiceClient.GetBlobContainerClient(noteId.ToString());
+
+            if (await containerClient.ExistsAsync())
+            {
+                try
+                {
+                    await foreach (var blobItem in containerClient.GetBlobsAsync())
+                    {
+                        var blobClient = containerClient.GetBlobClient(blobItem.Name);
+                        if (!await blobClient.DeleteIfExistsAsync())
+                        {
+                            _logger.LogError($"Failed to delete attachment {blobItem.Name} for note {noteId}.");
+                        }
+                    }
+
+                    // 🔹 Step 3: Delete the container itself
+                    await containerClient.DeleteIfExistsAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Failed to delete blob container for note {noteId}: {ex.Message}");
+                }
+            }
+
+            // 🔹 Step 4: Delete the note from the database
             _context.Notes.Remove(note);
             await _context.SaveChangesAsync();
-            return NoContent();
+
+            _logger.LogInformation($"Note {noteId} and all associated attachments deleted successfully.");
+            return NoContent();  // ✅ 204 No Content
         }
 
         /// <summary>
