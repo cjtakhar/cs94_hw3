@@ -161,5 +161,49 @@ namespace NoteKeeper.Controllers
                 return StatusCode(500, "Internal Server Error");
             }
         }
+
+        // 🔹 GET (Retrieve All Attachments for a Note)
+        [HttpGet]
+        public async Task<IActionResult> GetAllAttachments(string noteId)
+        {
+            try
+            {
+                var containerClient = _blobServiceClient.GetBlobContainerClient(noteId);
+
+                // 🔹 Step 1: Ensure the note (container) exists
+                if (!await containerClient.ExistsAsync())
+                {
+                    _logger.LogWarning($"Note {noteId} not found. Cannot retrieve attachments.");
+                    return NotFound($"Note {noteId} does not exist.");
+                }
+
+                var attachments = new List<object>();
+
+                // 🔹 Step 2: Retrieve all blobs in the container
+                await foreach (var blobItem in containerClient.GetBlobsAsync())
+                {
+                    attachments.Add(new
+                    {
+                        attachmentId = blobItem.Name,
+                        contentType = blobItem.Properties.ContentType ?? "unknown",
+                        createdDate = blobItem.Properties.CreatedOn?.ToString("o"),  // ISO 8601 format
+                        lastModifiedDate = blobItem.Properties.LastModified?.ToString("o"),
+                        length = blobItem.Properties.ContentLength
+                    });
+                }
+
+                // 🔹 Step 3: Return `200 OK` with attachment list
+                return Ok(new
+                {
+                    noteId,
+                    attachments
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error retrieving attachments for note {noteId}: {ex.Message}");
+                return StatusCode(500, "Internal Server Error");
+            }
+        }
     }
 }
