@@ -87,8 +87,6 @@ if (!string.IsNullOrEmpty(aiConnectionString))
 }
 
 builder.Services.AddSingleton(new BlobServiceClient(builder.Configuration["Storage:ConnectionString"]));
-
-
 builder.Services.AddSingleton<TelemetryClient>();
 
 // Configure CORS
