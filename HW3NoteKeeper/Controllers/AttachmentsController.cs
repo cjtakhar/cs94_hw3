@@ -11,6 +11,9 @@ using System.Threading.Tasks;
 
 namespace NoteKeeper.Controllers
 {
+    /// <summary>
+    /// Controller for managing attachments associated with notes using Azure Blob Storage.
+    /// </summary>
     [ApiController]
     [Route("notes/{noteId}/attachments")]
     public class AttachmentsController : ControllerBase
@@ -19,19 +22,33 @@ namespace NoteKeeper.Controllers
         private readonly ILogger<AttachmentsController> _logger;
         private readonly int _maxAttachments;
 
+        /// <summary>
+        /// Initializes the AttachmentsController with necessary dependencies.
+        /// </summary>
+        /// <param name="configuration">Application configuration settings.</param>
+        /// <param name="logger">Logger instance for logging errors and events.</param>
         public AttachmentsController(IConfiguration configuration, ILogger<AttachmentsController> logger)
         {
             _logger = logger;
 
+            // Retrieve Azure Storage connection string from configuration.
             string connectionString = configuration.GetSection("Storage")["ConnectionString"]
                                       ?? throw new InvalidOperationException("Azure Storage connection string is not configured.");
 
+            // Retrieve maximum number of attachments allowed per note.
             _maxAttachments = int.Parse(configuration["Storage:MaxAttachments"] ?? "3");
 
+            // Initialize the BlobServiceClient to interact with Azure Blob Storage.
             _blobServiceClient = new BlobServiceClient(connectionString);
         }
 
-        // 🔹 PUT (Upload or Update an Attachment)
+        /// <summary>
+        /// Uploads or updates an attachment for a specific note.
+        /// </summary>
+        /// <param name="noteId">The unique identifier of the note.</param>
+        /// <param name="attachmentId">The unique identifier of the attachment.</param>
+        /// <param name="fileData">The file to be uploaded.</param>
+        /// <returns>A response indicating success or failure.</returns>
         [HttpPut("{attachmentId}")]
         public async Task<IActionResult> UploadAttachment(string noteId, string attachmentId, IFormFile fileData)
         {
@@ -43,18 +60,22 @@ namespace NoteKeeper.Controllers
                 var containerClient = _blobServiceClient.GetBlobContainerClient(noteId);
                 await containerClient.CreateIfNotExistsAsync(PublicAccessType.None);
 
+                // Check if the note (container) exists.
                 if (!await containerClient.ExistsAsync())
                 {
                     _logger.LogWarning($"Note {noteId} not found. Cannot upload attachment {attachmentId}.");
                     return NotFound($"Note {noteId} does not exist.");
                 }
 
+                // Count the number of existing attachments.
                 var blobs = containerClient.GetBlobsAsync();
                 int count = 0;
                 await foreach (var blob in blobs)
                 {
                     count++;
                 }
+                
+                // Enforce attachment limit per note.
                 if (count >= _maxAttachments)
                 {
                     return Problem(
@@ -69,6 +90,7 @@ namespace NoteKeeper.Controllers
 
                 bool blobExists = await blobClient.ExistsAsync();
 
+                // Upload the file data to blob storage.
                 using (var stream = fileData.OpenReadStream())
                 {
                     await blobClient.UploadAsync(stream, new BlobUploadOptions
@@ -78,6 +100,7 @@ namespace NoteKeeper.Controllers
                     }, cancellationToken: default);
                 }
 
+                // Return appropriate response based on whether the attachment was updated or newly created.
                 if (blobExists)
                 {
                     return NoContent();
@@ -92,7 +115,12 @@ namespace NoteKeeper.Controllers
             }
         }
 
-        // 🔹 DELETE (Remove an Attachment)
+        /// <summary>
+        /// Deletes an attachment from a specific note.
+        /// </summary>
+        /// <param name="noteId">The unique identifier of the note.</param>
+        /// <param name="attachmentId">The unique identifier of the attachment.</param>
+        /// <returns>A response indicating success or failure.</returns>
         [HttpDelete("{attachmentId}")]
         public async Task<IActionResult> DeleteAttachment(string noteId, string attachmentId)
         {
@@ -127,7 +155,12 @@ namespace NoteKeeper.Controllers
             }
         }
 
-        // 🔹 GET (Retrieve an Attachment)
+        /// <summary>
+        /// Retrieves an attachment for a specific note.
+        /// </summary>
+        /// <param name="noteId">The unique identifier of the note.</param>
+        /// <param name="attachmentId">The unique identifier of the attachment.</param>
+        /// <returns>The requested file if found.</returns>
         [HttpGet("{attachmentId}")]
         public async Task<IActionResult> GetAttachment(string noteId, string attachmentId)
         {
@@ -162,7 +195,11 @@ namespace NoteKeeper.Controllers
             }
         }
 
-        // 🔹 GET (Retrieve All Attachments for a Note)
+        /// <summary>
+        /// Retrieves all attachments for a specific note.
+        /// </summary>
+        /// <param name="noteId">The unique identifier of the note.</param>
+        /// <returns>A list of attachments with metadata.</returns>
         [HttpGet]
         public async Task<IActionResult> GetAllAttachments(string noteId)
         {
@@ -170,7 +207,6 @@ namespace NoteKeeper.Controllers
             {
                 var containerClient = _blobServiceClient.GetBlobContainerClient(noteId);
 
-                // 🔹 Step 1: Ensure the note (container) exists
                 if (!await containerClient.ExistsAsync())
                 {
                     _logger.LogWarning($"Note {noteId} not found. Cannot retrieve attachments.");
@@ -179,7 +215,6 @@ namespace NoteKeeper.Controllers
 
                 var attachments = new List<object>();
 
-                // 🔹 Step 2: Retrieve all blobs in the container
                 await foreach (var blobItem in containerClient.GetBlobsAsync())
                 {
                     attachments.Add(new
@@ -192,12 +227,7 @@ namespace NoteKeeper.Controllers
                     });
                 }
 
-                // 🔹 Step 3: Return `200 OK` with attachment list
-                return Ok(new
-                {
-                    noteId,
-                    attachments
-                });
+                return Ok(new { noteId, attachments });
             }
             catch (Exception ex)
             {

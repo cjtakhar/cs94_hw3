@@ -19,7 +19,7 @@ using NoteKeeper.Data;
 using NoteKeeper.Services;
 using NoteKeeper.Helpers;
 
-// Configure the application
+// Create the builder
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure database connection
@@ -100,6 +100,7 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Build the application
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
@@ -120,7 +121,6 @@ app.UseSwaggerUI(c =>
 await StartupHelper.ApplyMigrationsAndSeedDatabase(app.Services);
 
 // Configure middleware
-app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
 app.UseCors("AllowReactApp");

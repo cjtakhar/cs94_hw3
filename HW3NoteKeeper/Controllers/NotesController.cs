@@ -17,7 +17,6 @@ using NoteKeeper.Data;
 using NoteKeeper.Models;
 using NoteKeeper.Settings;
 
-
 namespace NoteKeeper.Controllers
 {
     /// <summary>
@@ -35,8 +34,6 @@ namespace NoteKeeper.Controllers
         private readonly TelemetryClient _telemetryClient;
         private readonly BlobServiceClient _blobServiceClient;
 
-
-
         public NotesController(
             AppDbContext context, 
             IHttpClientFactory httpClientFactory, 
@@ -46,8 +43,6 @@ namespace NoteKeeper.Controllers
             TelemetryClient telemetryClient,
             BlobServiceClient blobServiceClient
         )
-            
-            
         {
             _context = context;
             _httpClientFactory = httpClientFactory;
@@ -56,17 +51,14 @@ namespace NoteKeeper.Controllers
             _noteSettings = noteSettings?.Value ?? throw new ArgumentNullException(nameof(noteSettings), "NoteSettings is null. Ensure it is registered in Program.cs.");
             _telemetryClient = telemetryClient ?? throw new ArgumentNullException(nameof(telemetryClient));
             _blobServiceClient = blobServiceClient;  // Assign the injected BlobServiceClient
-
         }
 
-
         /// <summary>
-        /// Retrieves all notes from database and searches by tag
+        /// Retrieves all notes from database and searches by tag.
         /// </summary>
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK)] // Returns list of notes
         public async Task<IActionResult> GetNotes([FromQuery] string? tagName)
-
         {
             IQueryable<Note> query = _context.Notes.Include(n => n.Tags);
 
@@ -86,21 +78,19 @@ namespace NoteKeeper.Controllers
                 note.Details,
                 note.CreatedDateUtc,
                 note.ModifiedDateUtc,
-                Tags = note.Tags.Select(t => t.Name).ToList() // 🔥 Convert tag objects to tag name list
+                Tags = note.Tags.Select(t => t.Name).ToList() // Convert tag objects to tag name list
             });
 
             return Ok(formattedNotes); // 200 OK (returns empty array if no notes found)
         }
 
-
         /// <summary>
-        /// Retrieves a note by its ID
+        /// Retrieves a note by its ID.
         /// </summary>
         [HttpGet("{noteId}")]
         [ProducesResponseType(StatusCodes.Status200OK)] // Returns the note if found
         [ProducesResponseType(StatusCodes.Status404NotFound)] // If the note does not exist
         public async Task<IActionResult> GetNoteById(Guid noteId)
-
         {
             var note = await _context.Notes.Include(n => n.Tags).FirstOrDefaultAsync(n => n.NoteId == noteId);
             if (note == null)
@@ -121,13 +111,13 @@ namespace NoteKeeper.Controllers
 
             return Ok(formattedNote);
         }
+
         /// <summary>
-        /// Retrieves a unique list of all tags
+        /// Retrieves a unique list of all tags.
         /// </summary>
         [HttpGet("tags")]
         [ProducesResponseType(StatusCodes.Status200OK)] // Returns list of unique tags
         public async Task<IActionResult> GetAllTags()
-
         {
             // Query unique tag names from the Tag table
             var uniqueTags = await _context.Tags
@@ -226,80 +216,78 @@ namespace NoteKeeper.Controllers
             }
         }
 
+        /// <summary>
+        /// Updates an existing note by its ID.
+        /// </summary>
+        [HttpPatch("{noteId}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)] // Successfully updated
+        [ProducesResponseType(StatusCodes.Status400BadRequest)] // Invalid input
+        [ProducesResponseType(StatusCodes.Status404NotFound)] // Note not found
+        public async Task<IActionResult> UpdateNote(Guid noteId, [FromBody] NoteUpdateRequest updateRequest)
+        {
+            if (updateRequest == null)
+            {
+                return BadRequest("Request body cannot be null.");
+            }
+
+            // Retrieve the existing note with its tags 
+            var note = await _context.Notes
+                .Include(n => n.Tags) 
+                .FirstOrDefaultAsync(n => n.NoteId == noteId);
+
+            if (note == null)
+            {
+                _logger.LogWarning("Update failed: Note with ID {NoteId} not found.", noteId);
+                return NotFound("Note not found.");
+            }
+
+            bool isSummaryUpdated = !string.IsNullOrWhiteSpace(updateRequest.Summary);
+            bool isDetailsUpdated = !string.IsNullOrWhiteSpace(updateRequest.Details);
+            bool shouldUpdateModifiedDate = false;
+
+            if (isSummaryUpdated)
+            {
+                note.Summary = updateRequest.Summary!.Trim();
+                shouldUpdateModifiedDate = true;
+            }
+
+            if (isDetailsUpdated)
+            {
+                note.Details = updateRequest.Details!.Trim();
+                shouldUpdateModifiedDate = true;
+
+                // Remove old tags before adding new ones 
+                _context.Tags.RemoveRange(note.Tags);
+                await _context.SaveChangesAsync(); 
+
+                // Generate new AI-powered tags 
+                var newTags = await GenerateTagsAsync(note.Details);
+                var tagEntities = newTags.Select(tagName => new Tag
+                {
+                    Id = Guid.NewGuid(),
+                    NoteId = note.NoteId,
+                    Name = tagName
+                }).ToList();
+
+                _context.Tags.AddRange(tagEntities);
+            }
+
+            if (shouldUpdateModifiedDate)
+            {
+                note.ModifiedDateUtc = DateTime.UtcNow;
+            }
+            else
+            {
+                return BadRequest("At least one field (summary or details) must be provided for an update.");
+            }
+
+            _context.Entry(note).State = EntityState.Modified; 
+            await _context.SaveChangesAsync();
+            
+            return NoContent(); // 204 No Content (Success)
+        }
 
         /// <summary>
-        /// Updates an existing note by its ID
-        /// </summary>
-[HttpPatch("{noteId}")]
-[ProducesResponseType(StatusCodes.Status204NoContent)] // Successfully updated
-[ProducesResponseType(StatusCodes.Status400BadRequest)] // Invalid input
-[ProducesResponseType(StatusCodes.Status404NotFound)] // Note not found
-public async Task<IActionResult> UpdateNote(Guid noteId, [FromBody] NoteUpdateRequest updateRequest)
-{
-    if (updateRequest == null)
-    {
-        return BadRequest("Request body cannot be null.");
-    }
-
-    // Retrieve the existing note with its tags 
-    var note = await _context.Notes
-        .Include(n => n.Tags) 
-        .FirstOrDefaultAsync(n => n.NoteId == noteId);
-
-    if (note == null)
-    {
-        _logger.LogWarning("Update failed: Note with ID {NoteId} not found.", noteId);
-        return NotFound("Note not found.");
-    }
-
-    bool isSummaryUpdated = !string.IsNullOrWhiteSpace(updateRequest.Summary);
-    bool isDetailsUpdated = !string.IsNullOrWhiteSpace(updateRequest.Details);
-    bool shouldUpdateModifiedDate = false;
-
-    if (isSummaryUpdated)
-    {
-        note.Summary = updateRequest.Summary!.Trim();
-        shouldUpdateModifiedDate = true;
-    }
-
-    if (isDetailsUpdated)
-    {
-        note.Details = updateRequest.Details!.Trim();
-        shouldUpdateModifiedDate = true;
-
-        // Remove old tags before adding new ones 
-        _context.Tags.RemoveRange(note.Tags);
-        await _context.SaveChangesAsync(); 
-
-        // Generate new AI-powered tags 
-        var newTags = await GenerateTagsAsync(note.Details);
-        var tagEntities = newTags.Select(tagName => new Tag
-        {
-            Id = Guid.NewGuid(),
-            NoteId = note.NoteId,
-            Name = tagName
-        }).ToList();
-
-        _context.Tags.AddRange(tagEntities);
-    }
-
-    if (shouldUpdateModifiedDate)
-    {
-        note.ModifiedDateUtc = DateTime.UtcNow;
-    }
-    else
-    {
-        return BadRequest("At least one field (summary or details) must be provided for an update.");
-    }
-
-    _context.Entry(note).State = EntityState.Modified; 
-    await _context.SaveChangesAsync();
-    
-    return NoContent(); // 204 No Content (Success)
-}
-
-
-    /// <summary>
         /// Deletes a note and its associated attachments.
         /// </summary>
         [HttpDelete("{noteId}")]
@@ -315,7 +303,7 @@ public async Task<IActionResult> UpdateNote(Guid noteId, [FromBody] NoteUpdateRe
                 return NotFound($"Note {noteId} does not exist.");
             }
 
-            // 🔹 Step 1: Delete associated tags
+            // Step 1: Delete associated tags
             try
             {
                 _context.Tags.RemoveRange(note.Tags);
@@ -327,7 +315,7 @@ public async Task<IActionResult> UpdateNote(Guid noteId, [FromBody] NoteUpdateRe
                 return StatusCode(500, "Failed to delete tags. Note deletion aborted.");
             }
 
-            // 🔹 Step 2: Delete all attachments from blob storage
+            // Step 2: Delete all attachments from blob storage
             var containerClient = _blobServiceClient.GetBlobContainerClient(noteId.ToString());
 
             if (await containerClient.ExistsAsync())
@@ -343,7 +331,7 @@ public async Task<IActionResult> UpdateNote(Guid noteId, [FromBody] NoteUpdateRe
                         }
                     }
 
-                    // 🔹 Step 3: Delete the container itself
+                    // Step 3: Delete the container itself
                     await containerClient.DeleteIfExistsAsync();
                 }
                 catch (Exception ex)
@@ -352,12 +340,12 @@ public async Task<IActionResult> UpdateNote(Guid noteId, [FromBody] NoteUpdateRe
                 }
             }
 
-            // 🔹 Step 4: Delete the note from the database
+            // Step 4: Delete the note from the database
             _context.Notes.Remove(note);
             await _context.SaveChangesAsync();
 
             _logger.LogInformation($"Note {noteId} and all associated attachments deleted successfully.");
-            return NoContent();  // ✅ 204 No Content
+            return NoContent();  // 204 No Content
         }
 
         /// <summary>
