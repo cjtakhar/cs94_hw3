@@ -8,12 +8,12 @@ using Microsoft.EntityFrameworkCore;
 namespace NoteKeeper.Helpers
 {
     /// <summary>
-    /// Helper class for applying database migrations and seeding data at application startup.
+    /// Helper class for handling database migrations and seeding data at application startup.
     /// </summary>
     public static class StartupHelper
     {
         /// <summary>
-        /// Applies database migrations and seeds default data.
+        /// Applies any pending database migrations and seeds default data into the database.
         /// </summary>
         /// <param name="services">The application's service provider.</param>
         public static async Task ApplyMigrationsAndSeedDatabase(IServiceProvider services)
@@ -23,51 +23,62 @@ namespace NoteKeeper.Helpers
 
             try
             {
-                Console.WriteLine("Applying migrations and seeding the database...");
+                Console.WriteLine("Applying database migrations and seeding the database...");
 
-                // Get the database context and apply any pending migrations
+                // Retrieve the database context from the service provider.
                 var dbContext = serviceProvider.GetRequiredService<AppDbContext>();
+
+                // Apply any pending migrations to ensure the database schema is up to date.
                 await dbContext.Database.MigrateAsync();
 
-                // Retrieve AI settings and HttpClientFactory for tag generation
+                // Retrieve AI settings and the HttpClientFactory for making API requests.
                 var aiSettings = serviceProvider.GetRequiredService<AISettings>();
                 var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
 
-                // Define a function to generate tags using OpenAI API
+             
+                // Function to generate relevant tags for a given note's details using OpenAI API.
                 Func<string, Task<List<string>>> generateTagsAsync = async (details) =>
                 {
                     using var httpClient = httpClientFactory.CreateClient("OpenAI");
 
+                    // Construct the request payload for the OpenAI API.
                     var requestBody = new
                     {
-                        model = aiSettings.DeploymentModelName ?? "gpt-4o-mini",
+                        model = aiSettings.DeploymentModelName ?? "gpt-4o-mini", // Default to GPT-4o-mini if no model is specified.
                         messages = new[]
                         {
                             new { role = "system", content = "Generate 3-5 relevant one-word tags for the given note details. Always return a valid JSON array." },
                             new { role = "user", content = details }
                         },
-                        temperature = 0.5,
-                        max_tokens = 50
+                        temperature = 0.5, // Controls randomness in responses.
+                        max_tokens = 50 // Limits the response length.
                     };
 
+                    // Serialize the request body to JSON format.
                     var json = JsonSerializer.Serialize(requestBody);
                     var content = new StringContent(json, Encoding.UTF8);
                     content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
+                    // Attach API key for authentication.
                     httpClient.DefaultRequestHeaders.Add("api-key", aiSettings.ApiKey);
+
+                    // Send the request to OpenAI API endpoint.
                     var response = await httpClient.PostAsync(aiSettings.Endpoint, content);
 
+                    // Handle unsuccessful API responses.
                     if (!response.IsSuccessStatusCode)
                     {
                         Console.WriteLine("OpenAI API request failed.");
                         return new List<string> { "ErrorFetchingTags" };
                     }
 
+                    // Read the response content.
                     var responseContent = await response.Content.ReadAsStringAsync();
                     Console.WriteLine($"Received response: {responseContent}");
 
                     try
                     {
+                        // Parse the JSON response from OpenAI.
                         var jsonResponse = JsonDocument.Parse(responseContent);
                         var messageContent = jsonResponse.RootElement
                             .GetProperty("choices")[0]
@@ -77,27 +88,24 @@ namespace NoteKeeper.Helpers
 
                         if (!string.IsNullOrEmpty(messageContent))
                         {
-                            // Clean up the response by removing the code block syntax (```json) and whitespace
+                            // Clean up potential formatting issues in the response.
                             messageContent = messageContent
-                                .Replace("```json", "")  // Remove the start of the code block
-                                .Replace("```", "")      // Remove the end of the code block
-                                .Trim();                 // Trim any extra spaces
+                                .Replace("```json", "")  // Remove code block markers.
+                                .Replace("```", "")      
+                                .Trim();                 
 
+                            // Ensure the response is a properly formatted JSON array.
                             if (messageContent.StartsWith("[") && messageContent.EndsWith("]"))
                             {
-                                // Deserialize the cleaned-up response into a list of tags
+                                // Deserialize JSON array into a list of tags.
                                 var tags = JsonSerializer.Deserialize<List<string>>(messageContent);
 
-                                if (tags == null || tags.Count == 0)
-                                {
-                                    return new List<string> { "NoTagsGenerated" };
-                                }
-
-                                // Return the successfully parsed tags
-                                return tags;
+                                // If no valid tags are extracted, return a default value.
+                                return tags?.Count > 0 ? tags : new List<string> { "NoTagsGenerated" };
                             }
                         }
 
+                        // Return an error if the response format is incorrect.
                         return new List<string> { "InvalidTagsFormat" };
                     }
                     catch (Exception ex)
@@ -107,11 +115,12 @@ namespace NoteKeeper.Helpers
                     }
                 };
 
-                // Seed the database with initial data and pass AISettings to DbInitializer
+                // Call the database seeding function, passing the tag generation function.
                 await DbInitializer.Seed(dbContext, generateTagsAsync);
             }
             catch (Exception ex)
             {
+                // Log any errors encountered during migration or seeding.
                 Console.WriteLine($"An error occurred during migration or seeding: {ex.Message}");
             }
         }
