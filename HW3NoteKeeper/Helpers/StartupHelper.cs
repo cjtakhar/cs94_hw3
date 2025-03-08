@@ -35,7 +35,7 @@ namespace NoteKeeper.Helpers
                 var aiSettings = serviceProvider.GetRequiredService<AISettings>();
                 var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
 
-             
+
                 // Function to generate relevant tags for a given note's details using OpenAI API.
                 Func<string, Task<List<string>>> generateTagsAsync = async (details) =>
                 {
@@ -91,8 +91,8 @@ namespace NoteKeeper.Helpers
                             // Clean up potential formatting issues in the response.
                             messageContent = messageContent
                                 .Replace("```json", "")  // Remove code block markers.
-                                .Replace("```", "")      
-                                .Trim();                 
+                                .Replace("```", "")
+                                .Trim();
 
                             // Ensure the response is a properly formatted JSON array.
                             if (messageContent.StartsWith("[") && messageContent.EndsWith("]"))

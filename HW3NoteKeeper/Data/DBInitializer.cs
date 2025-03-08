@@ -1,11 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NoteKeeper.Data;
 using NoteKeeper.Models;
-using NoteKeeper.Settings;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 /// <summary>
 /// Provides functionality to seed the database with default notes and AI-generated tags.
@@ -22,7 +17,7 @@ public static class DbInitializer
     {
         // Retrieve existing note summaries to avoid duplicate entries.
         var existingSummaries = await context.Notes.Select(n => n.Summary).ToListAsync();
-        
+
         // Define a list of seed notes with default summaries and details.
         var seedNotes = new List<Note>
         {
@@ -34,7 +29,7 @@ public static class DbInitializer
 
         // Filter out notes that already exist in the database to prevent duplicates.
         var notesToAdd = seedNotes.Where(note => !existingSummaries.Contains(note.Summary)).ToList();
-        
+
         if (notesToAdd.Any()) // Check if there are any new notes to add.
         {
             foreach (var note in notesToAdd)
