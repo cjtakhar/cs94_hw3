@@ -1,10 +1,18 @@
 namespace NoteKeeper.Settings
 {
     /// <summary>
-    /// Gets or sets the maximum number of notes that can be stored in the database.
+    /// Configuration settings for notes and attachments.
     /// </summary>
     public class NoteSettings
     {
-        public int MaxNotes { get; set; } = 10; // Sets maximum number of notes to 10 by default
+        /// <summary>
+        /// Gets or sets the maximum number of notes that can be stored in the database.
+        /// </summary>
+        public int MaxNotes { get; set; } = 10; // Default: 10 notes
+
+        /// <summary>
+        /// Gets or sets the maximum number of attachments allowed per note.
+        /// </summary>
+        public int MaxAttachments { get; set; } = 3; // Default: 3 attachments
     }
 }

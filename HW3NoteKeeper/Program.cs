@@ -65,6 +65,7 @@ builder.Services.AddSwaggerGen(c =>
     c.IncludeXmlComments(xmlPath);
 });
 
+// Configure BlobStorageService
 builder.Services.AddSingleton<BlobStorageService>();
 
 // Configure NoteSettings

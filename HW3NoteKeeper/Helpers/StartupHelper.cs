@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text;
 using System.Net.Http.Headers;
 using Microsoft.EntityFrameworkCore;
+using NoteKeeper.Services;
 
 namespace NoteKeeper.Helpers
 {
@@ -116,7 +117,9 @@ namespace NoteKeeper.Helpers
                 };
 
                 // Call the database seeding function, passing the tag generation function.
-                await DbInitializer.Seed(dbContext, generateTagsAsync);
+                var blobStorageService = serviceProvider.GetRequiredService<BlobStorageService>();
+                await DbInitializer.Seed(dbContext, generateTagsAsync, blobStorageService, "SampleAttachments");
+
             }
             catch (Exception ex)
             {
