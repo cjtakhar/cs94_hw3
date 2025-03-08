@@ -1,24 +1,15 @@
 using Microsoft.EntityFrameworkCore;
+using System.IO;
 using NoteKeeper.Data;
 using NoteKeeper.Models;
+using NoteKeeper.Services;
 
-/// <summary>
-/// Provides functionality to seed the database with default notes and AI-generated tags.
-/// </summary>
 public static class DbInitializer
 {
-    /// <summary>
-    /// Seeds the database with predefined notes and generates AI-powered tags for each note.
-    /// Ensures that duplicate entries are not added.
-    /// </summary>
-    /// <param name="context">The database context to interact with the database.</param>
-    /// <param name="generateTagsAsync">A function to generate AI-powered tags based on note details.</param>
-    public static async Task Seed(AppDbContext context, Func<string, Task<List<string>>> generateTagsAsync)
+    public static async Task Seed(AppDbContext context, Func<string, Task<List<string>>> generateTagsAsync, BlobStorageService blobStorageService, string sampleAttachmentsPath)
     {
-        // Retrieve existing note summaries to avoid duplicate entries.
         var existingSummaries = await context.Notes.Select(n => n.Summary).ToListAsync();
 
-        // Define a list of seed notes with default summaries and details.
         var seedNotes = new List<Note>
         {
             new Note { Summary = "Running grocery list", Details = "Milk, Eggs, Oranges" },
@@ -27,33 +18,64 @@ public static class DbInitializer
             new Note { Summary = "Azure tips", Details = "portal.azure.com is a quick way to get to the portal" }
         };
 
-        // Filter out notes that already exist in the database to prevent duplicates.
         var notesToAdd = seedNotes.Where(note => !existingSummaries.Contains(note.Summary)).ToList();
+        if (!notesToAdd.Any()) return;
 
-        if (notesToAdd.Any()) // Check if there are any new notes to add.
+        foreach (var note in notesToAdd)
         {
-            foreach (var note in notesToAdd)
+            note.NoteId = Guid.NewGuid();
+            note.CreatedDateUtc = DateTime.UtcNow;
+            note.Tags = (await generateTagsAsync(note.Details)).Select(tag => new Tag
             {
-                // Assign a unique identifier (GUID) to each new note.
-                note.NoteId = Guid.NewGuid();
+                Id = Guid.NewGuid(),
+                Name = tag,
+                NoteId = note.NoteId
+            }).ToList();
 
-                // Set the creation date to the current UTC time.
-                note.CreatedDateUtc = DateTime.UtcNow;
+            context.Notes.Add(note);
 
-                // Generate AI-powered tags for the note based on its details.
-                note.Tags = (await generateTagsAsync(note.Details)).Select(tag => new Tag
-                {
-                    Id = Guid.NewGuid(),
-                    Name = tag,
-                    NoteId = note.NoteId
-                }).ToList();
+            // Ensure the container exists for this note
+            await blobStorageService.EnsureContainerExistsAsync(note.NoteId.ToString());
+
+            // Upload attachments
+            var attachments = GetAttachmentsForNote(note.Summary);
+            foreach (var attachment in attachments)
+            {
+                var filePath = Path.Combine(sampleAttachmentsPath, attachment);
+                if (!File.Exists(filePath)) continue;
+
+                using var fileStream = File.OpenRead(filePath);
+                await blobStorageService.UploadAttachmentAsync(
+                    note.NoteId.ToString(),
+                    attachment,
+                    fileStream,
+                    GetContentType(attachment)
+                );
             }
-
-            // Add the new notes to the database.
-            context.Notes.AddRange(notesToAdd);
-
-            // Save changes asynchronously to persist data in the Azure SQL database.
-            await context.SaveChangesAsync();
         }
+
+        await context.SaveChangesAsync();
+    }
+
+    private static Dictionary<string, List<string>> noteAttachments = new()
+    {
+        { "Running grocery list", new List<string> { "MilkAndEggs.png", "Oranges.png" } },
+        { "Gift supplies notes", new List<string> { "WrappingPaper.png", "Tape.png" } },
+        { "Valentine's Day gift ideas", new List<string> { "Chocolate.png", "Diamonds.png", "NewCar.png" } },
+        { "Azure tips", new List<string> { "AzureLogo.png", "AzureTipsAndTricks.pdf" } }
+    };
+
+    private static List<string> GetAttachmentsForNote(string summary)
+        => noteAttachments.TryGetValue(summary, out var attachments) ? attachments : new List<string>();
+
+    private static string GetContentType(string filename)
+    {
+        return Path.GetExtension(filename).ToLower() switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".pdf" => "application/pdf",
+            _ => "application/octet-stream"
+        };
     }
 }
