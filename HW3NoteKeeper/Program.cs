@@ -15,22 +15,17 @@ using NoteKeeper.Data;
 using NoteKeeper.Services;
 using NoteKeeper.Helpers;
 
-// Create the builder
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure User Secrets (for local development)
+if (builder.Environment.IsDevelopment())
+{
+    builder.Configuration.AddUserSecrets<Program>();
+}
 
 // Configure database connection
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(connectionString));
-
-// Configure OpenAI settings
-var aiSettings = builder.Configuration.GetSection("OpenAI").Get<AISettings>();
-
-// Validate OpenAI settings
-if (aiSettings == null || string.IsNullOrWhiteSpace(aiSettings.ApiKey) || string.IsNullOrWhiteSpace(aiSettings.Endpoint))
-{
-    throw new InvalidOperationException("OpenAI settings are missing. Ensure they are set in Azure Application Settings, appsettings.json, or secrets.json.");
-}
+builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlServer(connectionString));
 
 // Register AISettings for dependency injection
 builder.Services.Configure<AISettings>(builder.Configuration.GetSection("OpenAI"));
@@ -46,7 +41,6 @@ builder.Services.AddHttpClient("OpenAI", (provider, client) =>
         throw new InvalidOperationException("OpenAI Endpoint is missing. Ensure it is set in environment variables or appsettings.json.");
     }
 
-    // Set up the HTTP client with the OpenAI API endpoint and authentication
     client.BaseAddress = new Uri(settings.Endpoint);
     client.DefaultRequestHeaders.Add("api-key", settings.ApiKey);
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -58,7 +52,6 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "Note Keeper API", Version = "v1" });
-
     // Include XML Comments for API Documentation
     var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
@@ -74,7 +67,6 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<NoteSettings>
 
 // Configure Application Insights Telemetry
 var aiConnectionString = Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING");
-
 if (!string.IsNullOrEmpty(aiConnectionString))
 {
     builder.Services.AddApplicationInsightsTelemetry(options =>
@@ -83,6 +75,7 @@ if (!string.IsNullOrEmpty(aiConnectionString))
     });
 }
 
+// Configure Blob Storage Client
 builder.Services.AddSingleton(new BlobServiceClient(builder.Configuration["Storage:ConnectionString"]));
 builder.Services.AddSingleton<TelemetryClient>();
 
@@ -100,18 +93,12 @@ builder.Services.AddCors(options =>
 // Build the application
 var app = builder.Build();
 
-// Configure the HTTP request pipeline
-if (app.Environment.IsDevelopment())
-{
-    builder.Configuration.AddUserSecrets<Program>();
-}
-
-// Enable Swagger
+// Enable Swagger at the Base URL
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Note Keeper API V1");
-    c.RoutePrefix = string.Empty;
+    c.RoutePrefix = string.Empty; // Serve the Swagger UI at the root URL
 });
 
 // Apply database migrations and seed the database
