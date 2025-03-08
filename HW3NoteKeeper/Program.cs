@@ -1,16 +1,12 @@
 // System Namespaces
 using System.Net.Http.Headers;
 using System.Reflection;
-using System.Text;
-using System.Text.Json;
 
 // Third-Party Libraries
 using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.ApplicationInsights;
-using Microsoft.ApplicationInsights.Extensibility;
-using Microsoft.ApplicationInsights.AspNetCore.Extensions;
 using Azure.Storage.Blobs;
 
 // Project-Specific Namespaces

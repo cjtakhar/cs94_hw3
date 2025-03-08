@@ -1,13 +1,6 @@
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Threading.Tasks;
 
 namespace NoteKeeper.Controllers
 {
@@ -74,7 +67,7 @@ namespace NoteKeeper.Controllers
                 {
                     count++;
                 }
-                
+
                 // Enforce attachment limit per note.
                 if (count >= _maxAttachments)
                 {

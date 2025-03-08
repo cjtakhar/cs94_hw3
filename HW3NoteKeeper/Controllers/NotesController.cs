@@ -1,8 +1,6 @@
 // System Namespaces
 using System.Text;
 using System.Text.Json;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 
 // Third-Party Libraries
 using Microsoft.AspNetCore.Mvc;
@@ -35,10 +33,10 @@ namespace NoteKeeper.Controllers
         private readonly BlobServiceClient _blobServiceClient;
 
         public NotesController(
-            AppDbContext context, 
-            IHttpClientFactory httpClientFactory, 
-            IOptions<AISettings> aiSettings, 
-            IOptions<NoteSettings> noteSettings, 
+            AppDbContext context,
+            IHttpClientFactory httpClientFactory,
+            IOptions<AISettings> aiSettings,
+            IOptions<NoteSettings> noteSettings,
             ILogger<NotesController> logger,
             TelemetryClient telemetryClient,
             BlobServiceClient blobServiceClient
@@ -232,7 +230,7 @@ namespace NoteKeeper.Controllers
 
             // Retrieve the existing note with its tags 
             var note = await _context.Notes
-                .Include(n => n.Tags) 
+                .Include(n => n.Tags)
                 .FirstOrDefaultAsync(n => n.NoteId == noteId);
 
             if (note == null)
@@ -258,7 +256,7 @@ namespace NoteKeeper.Controllers
 
                 // Remove old tags before adding new ones 
                 _context.Tags.RemoveRange(note.Tags);
-                await _context.SaveChangesAsync(); 
+                await _context.SaveChangesAsync();
 
                 // Generate new AI-powered tags 
                 var newTags = await GenerateTagsAsync(note.Details);
@@ -281,9 +279,9 @@ namespace NoteKeeper.Controllers
                 return BadRequest("At least one field (summary or details) must be provided for an update.");
             }
 
-            _context.Entry(note).State = EntityState.Modified; 
+            _context.Entry(note).State = EntityState.Modified;
             await _context.SaveChangesAsync();
-            
+
             return NoContent(); // 204 No Content (Success)
         }
 
