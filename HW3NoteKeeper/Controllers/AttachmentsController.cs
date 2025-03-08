@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.DataContracts;
 
 namespace NoteKeeper.Controllers
 {
@@ -13,6 +15,7 @@ namespace NoteKeeper.Controllers
     {
         private readonly BlobServiceClient _blobServiceClient;
         private readonly ILogger<AttachmentsController> _logger;
+        private readonly TelemetryClient _telemetryClient;
         private readonly int _maxAttachments;
 
         /// <summary>
@@ -20,7 +23,8 @@ namespace NoteKeeper.Controllers
         /// </summary>
         /// <param name="configuration">Application configuration settings.</param>
         /// <param name="logger">Logger instance for logging errors and events.</param>
-        public AttachmentsController(IConfiguration configuration, ILogger<AttachmentsController> logger)
+        /// <param name="telemetryClient">Telemetry client for Application Insights.</param>
+        public AttachmentsController(IConfiguration configuration, ILogger<AttachmentsController> logger, TelemetryClient telemetryClient)
         {
             _logger = logger;
 
@@ -33,6 +37,9 @@ namespace NoteKeeper.Controllers
 
             // Initialize the BlobServiceClient to interact with Azure Blob Storage.
             _blobServiceClient = new BlobServiceClient(connectionString);
+
+            // Initialize Application Insights telemetry client.
+            _telemetryClient = telemetryClient;
         }
 
         /// <summary>
@@ -46,14 +53,17 @@ namespace NoteKeeper.Controllers
         public async Task<IActionResult> UploadAttachment(string noteId, string attachmentId, IFormFile fileData)
         {
             if (fileData == null || fileData.Length == 0)
-                return BadRequest("File is required.");
+            {
+                var errorDetails = "File is required.";
+                LogValidationError(errorDetails, new { NoteId = noteId, AttachmentId = attachmentId });
+                return BadRequest(errorDetails);
+            }
 
             try
             {
                 var containerClient = _blobServiceClient.GetBlobContainerClient(noteId);
                 await containerClient.CreateIfNotExistsAsync(PublicAccessType.None);
 
-                // Check if the note (container) exists.
                 if (!await containerClient.ExistsAsync())
                 {
                     _logger.LogWarning($"Note {noteId} not found. Cannot upload attachment {attachmentId}.");
@@ -61,14 +71,12 @@ namespace NoteKeeper.Controllers
                 }
 
                 // Count the number of existing attachments.
-                var blobs = containerClient.GetBlobsAsync();
-                int count = 0;
-                await foreach (var blob in blobs)
-                {
-                    count++;
-                }
+               int count = 0;
+               await foreach (var _ in containerClient.GetBlobsAsync())
+               {
+                   count++;
+               }
 
-                // Enforce attachment limit per note.
                 if (count >= _maxAttachments)
                 {
                     return Problem(
@@ -79,34 +87,57 @@ namespace NoteKeeper.Controllers
                 }
 
                 var blobClient = containerClient.GetBlobClient(attachmentId);
-                var metadata = new Dictionary<string, string> { { "NoteId", noteId } };
-
                 bool blobExists = await blobClient.ExistsAsync();
 
-                // Upload the file data to blob storage.
                 using (var stream = fileData.OpenReadStream())
                 {
                     await blobClient.UploadAsync(stream, new BlobUploadOptions
                     {
                         HttpHeaders = new BlobHttpHeaders { ContentType = fileData.ContentType },
-                        Metadata = metadata
-                    }, cancellationToken: default);
+                        Metadata = new Dictionary<string, string> { { "NoteId", noteId } }
+                    });
                 }
 
-                // Return appropriate response based on whether the attachment was updated or newly created.
-                if (blobExists)
-                {
-                    return NoContent();
-                }
+                // Log telemetry event for attachment creation or update
+                string eventName = blobExists ? "AttachmentUpdated" : "AttachmentCreated";
+                var telemetry = new EventTelemetry(eventName);
+                telemetry.Properties["AttachmentId"] = blobClient.Name;
+                telemetry.Metrics["AttachmentSize"] = fileData.Length;
+                _telemetryClient.TrackEvent(telemetry);
 
-                return Created(blobClient.Uri.ToString(), new { Message = "Attachment created successfully.", AttachmentUrl = blobClient.Uri.ToString() });
+                return blobExists ? NoContent() : Created(blobClient.Uri.ToString(), new { AttachmentUrl = blobClient.Uri.ToString() });
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error uploading attachment {attachmentId} for note {noteId}: {ex.Message}");
+                LogException(ex, new { NoteId = noteId, AttachmentId = attachmentId });
                 return StatusCode(500, "Internal Server Error");
             }
         }
+
+        private void LogValidationError(string errorDetails, object additionalData)
+        {
+            // Log warning for local debugging
+            _logger.LogWarning("Validation error: {ErrorDetails} with additional data: {AdditionalData}", errorDetails, additionalData);
+
+            // Log validation errors in Application Insights
+            var traceTelemetry = new TraceTelemetry(errorDetails, SeverityLevel.Warning);
+            traceTelemetry.Properties["InputPayload"] = System.Text.Json.JsonSerializer.Serialize(additionalData);
+            _telemetryClient.TrackTrace(traceTelemetry);
+        }
+
+        private void LogException(Exception ex, object additionalData)
+        {
+            // Log error for local debugging
+            _logger.LogError(ex, "An error occurred with additional data: {AdditionalData}", additionalData);
+
+            // Log exception details in Application Insights
+            var exceptionTelemetry = new ExceptionTelemetry(ex);
+            exceptionTelemetry.Properties["InputPayload"] = System.Text.Json.JsonSerializer.Serialize(additionalData);
+            _telemetryClient.TrackException(exceptionTelemetry);
+        }
+
+
+
 
         /// <summary>
         /// Deletes an attachment from a specific note.
