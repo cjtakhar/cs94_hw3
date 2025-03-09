@@ -17,3 +17,6 @@ publish/
 # Ignore secrets files
 **/secrets.json
 **/appsettings.Development.json
+
+# Ignore Project Notes
+ProjectNotes.txt
