@@ -3,8 +3,6 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.DataContracts;
-using System.IO;
-using System.Threading.Tasks;
 
 namespace NoteKeeper.Controllers
 {
