@@ -1,12 +1,18 @@
-Hw3NoteKeeperSolution - Assignment #3 
-Kuljit Takhar
-kut819@g.harvard.edu
-AI attribution
-Notes to install
-AI Foundry Hub and Project name
-Azure SQL Server
-Azure SQL Database
-URL to the Azure SQL Server with the Database name included
-The name of your Azure Storage account
-URL to Azure App Service Website.
-Uri Azure OpenAI Service
+Assignment #3 
+
+Assignment Title: Hw3NoteKeeperSolution
+Name: Kuljit Takhar
+Email: kut819@g.harvard.edu
+AI attribution: Generating xml and inline comments. Debugging logs. 
+Notes to install: 
+    Project root directory: HW3NoteKeeperSolution/HW3NoteKeeper
+AI Foundry Hub: ai-hub-nk
+Project name: app-hw3-notekeeper
+Azure SQL Server: sql-cs94svr
+Azure SQL Database: sqldb-cs94
+URL to the Azure SQL Server with the Database name included: sql-cs94svr.database.windows.net/sqldb-cs94
+Azure Storage account: sthw3
+URL to Azure App Service Website https://app-hw3-notekeeper.azurewebsites.net/
+Uri Azure OpenAI Service: https://ai-hub-nk.openai.azure.com/
+
+Extra Credit Option 1: Log custom telemetry into application insights.
